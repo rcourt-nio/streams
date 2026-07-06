@@ -1,0 +1,12 @@
+# Rust build artifacts
+target/
+
+# Secrets
+.env
+
+# Data files
+*.csv
+*.avro
+
+# Independent repo (github.com/rcourt-nio/usage-logger)
+usage-logger/

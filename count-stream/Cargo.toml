@@ -1,0 +1,10 @@
+[package]
+name = "count-stream"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nominal-streaming = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+clap = { version = "4", features = ["derive", "env"] }
+ctrlc = "3"

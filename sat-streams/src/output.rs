@@ -1,0 +1,151 @@
+use crate::pipeline::MetricRecord;
+use serde_json::{Map, Value, json};
+use std::error::Error;
+use std::io::Write;
+use std::sync::mpsc;
+use std::thread;
+
+pub trait OutputSink: Send {
+    fn name(&self) -> &'static str;
+    fn consume(&mut self, record: &MetricRecord) -> Result<(), Box<dyn Error>>;
+    fn flush(&mut self) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+}
+
+pub struct OutputDispatcher {
+    _handle: thread::JoinHandle<()>,
+}
+
+impl OutputDispatcher {
+    pub fn spawn(
+        receiver: mpsc::Receiver<MetricRecord>,
+        mut sinks: Vec<Box<dyn OutputSink>>,
+    ) -> Self {
+        let handle = thread::spawn(move || {
+            while let Ok(record) = receiver.recv() {
+                for sink in &mut sinks {
+                    if let Err(e) = sink.consume(&record) {
+                        eprintln!("[{}] error: {e}", sink.name());
+                    }
+                }
+            }
+            for sink in &mut sinks {
+                if let Err(e) = sink.flush() {
+                    eprintln!("[{}] flush error: {e}", sink.name());
+                }
+            }
+        });
+
+        Self { _handle: handle }
+    }
+
+    pub fn join(self) {
+        let _ = self._handle.join();
+    }
+}
+
+pub struct ConsoleSink {
+    pretty: bool,
+}
+
+impl ConsoleSink {
+    pub fn new(pretty: bool) -> Self {
+        Self { pretty }
+    }
+
+    fn build_output(&self, record: &MetricRecord) -> Value {
+        if record.snapshot {
+            let mut out = record.raw.clone();
+            out.insert("_snapshot".into(), Value::Bool(true));
+            return Value::Object(out);
+        }
+
+        let mut changed_top_keys = std::collections::HashSet::new();
+        for sample in &record.samples {
+            if sample.tags.is_none() && sample.changed {
+                if let Some(top) = sample.path.split('.').next() {
+                    changed_top_keys.insert(top.to_string());
+                }
+            }
+        }
+
+        let mut out = Map::new();
+        out.insert("timestamp".into(), json!(record.timestamp_iso));
+        out.insert("interval_ms".into(), json!(record.interval_ms));
+        out.insert("collect_ms".into(), json!(record.collect_ms));
+
+        for key in &changed_top_keys {
+            if let Some(value) = record.raw.get(key.as_str()) {
+                let filtered = self.filter_changed(key, value, record);
+                out.insert(key.clone(), filtered);
+            }
+        }
+
+        Value::Object(out)
+    }
+
+    fn filter_changed(&self, prefix: &str, value: &Value, record: &MetricRecord) -> Value {
+        match value {
+            Value::Object(map) => {
+                let mut filtered = Map::new();
+                for (k, v) in map {
+                    let path = format!("{prefix}.{k}");
+                    if self.has_changed_descendant(&path, record) {
+                        filtered.insert(k.clone(), self.filter_changed(&path, v, record));
+                    }
+                }
+                Value::Object(filtered)
+            }
+            Value::Array(arr) => {
+                let mut filtered = Vec::new();
+                let mut any_changed = false;
+                for (i, v) in arr.iter().enumerate() {
+                    let path = format!("{prefix}.{i}");
+                    if self.has_changed_descendant(&path, record) {
+                        any_changed = true;
+                    }
+                    filtered.push(v.clone());
+                }
+                if any_changed {
+                    Value::Array(filtered)
+                } else {
+                    Value::Array(vec![])
+                }
+            }
+            _ => value.clone(),
+        }
+    }
+
+    fn has_changed_descendant(&self, prefix: &str, record: &MetricRecord) -> bool {
+        record.samples.iter().any(|s| {
+            s.tags.is_none()
+                && s.changed
+                && (s.path == prefix || s.path.starts_with(&format!("{prefix}.")))
+        })
+    }
+}
+
+impl OutputSink for ConsoleSink {
+    fn name(&self) -> &'static str {
+        "console"
+    }
+
+    fn consume(&mut self, record: &MetricRecord) -> Result<(), Box<dyn Error>> {
+        let output = self.build_output(record);
+        let mut stdout = std::io::stdout().lock();
+        if self.pretty {
+            serde_json::to_writer_pretty(&mut stdout, &output)?;
+        } else {
+            serde_json::to_writer(&mut stdout, &output)?;
+        }
+        stdout.write_all(b"\n")?;
+
+        for log in &record.logs {
+            writeln!(stdout, "[{}] {}", log.channel, log.message)?;
+        }
+
+        stdout.flush()?;
+        Ok(())
+    }
+}

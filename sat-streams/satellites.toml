@@ -1,0 +1,83 @@
+[ground_station]
+name = "GSFC"
+latitude_deg = 38.9977
+longitude_deg = -76.8489
+altitude_m = 53.0
+
+# ISS-like: Low Earth Orbit, high inclination
+[[satellites]]
+name = "Explorer-1"
+norad_id = 25544
+category = "science"
+semi_major_axis_km = 6778.0
+eccentricity = 0.0002
+inclination_deg = 51.6
+raan_deg = 30.0
+arg_perigee_deg = 0.0
+mean_anomaly_epoch_deg = 0.0
+epoch_unix = 1700000000.0
+
+# GPS-like: Medium Earth Orbit
+[[satellites]]
+name = "NavStar-7"
+norad_id = 28874
+category = "navigation"
+semi_major_axis_km = 26560.0
+eccentricity = 0.005
+inclination_deg = 55.0
+raan_deg = 120.0
+arg_perigee_deg = 45.0
+mean_anomaly_epoch_deg = 90.0
+epoch_unix = 1700000000.0
+
+# GEO comms satellite
+[[satellites]]
+name = "GeoComm-3"
+norad_id = 33051
+category = "communications"
+semi_major_axis_km = 42164.0
+eccentricity = 0.0001
+inclination_deg = 0.05
+raan_deg = 0.0
+arg_perigee_deg = 0.0
+mean_anomaly_epoch_deg = 250.0
+epoch_unix = 1700000000.0
+
+# Polar weather satellite (Sun-synchronous orbit)
+[[satellites]]
+name = "MeteoSat-P"
+norad_id = 41866
+category = "weather"
+semi_major_axis_km = 7178.0
+eccentricity = 0.001
+inclination_deg = 98.2
+raan_deg = 200.0
+arg_perigee_deg = 90.0
+mean_anomaly_epoch_deg = 45.0
+epoch_unix = 1700000000.0
+
+# Hubble-like: Low Earth Orbit, low inclination
+[[satellites]]
+name = "Hubble-2"
+norad_id = 20580
+category = "earth_observation"
+semi_major_axis_km = 6917.0
+eccentricity = 0.0003
+inclination_deg = 28.5
+raan_deg = 75.0
+arg_perigee_deg = 0.0
+mean_anomaly_epoch_deg = 180.0
+epoch_unix = 1700000000.0
+
+# Molniya-like: Highly elliptical orbit
+[[satellites]]
+name = "Tundra-9"
+norad_id = 50001
+category = "communications"
+semi_major_axis_km = 26554.0
+eccentricity = 0.72
+inclination_deg = 63.4
+raan_deg = 270.0
+arg_perigee_deg = 270.0
+mean_anomaly_epoch_deg = 0.0
+epoch_unix = 1700000000.0
