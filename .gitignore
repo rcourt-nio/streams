@@ -1,6 +1,9 @@
 # Rust build artifacts
 target/
 
+# StreamBar build output
+streambar/StreamBar.app/
+
 # Secrets
 .env
 

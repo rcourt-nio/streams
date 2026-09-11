@@ -9,6 +9,7 @@ STREAMS=(
   "count-stream"
   "sat-streams"
   "usage-logger"
+  "flink-streams"
 )
 
 pids=()

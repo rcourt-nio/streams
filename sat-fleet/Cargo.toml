@@ -1,0 +1,21 @@
+[package]
+name = "sat-fleet"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
+conjure-runtime-rustls-platform-verifier = "0.1"
+crossterm = "0.28"
+dotenvy = "0.15"
+futures = "0.3"
+nominal-streaming = "0.7"
+ratatui = "0.29"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+toml = "0.8"
+url = "2"

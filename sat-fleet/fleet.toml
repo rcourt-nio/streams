@@ -1,0 +1,74 @@
+# sat-fleet configuration: batch presets + shared generation parameters.
+#
+# Satellites are generated deterministically from their name, so the same
+# preset always produces the same constellation (stable names -> stable
+# assets in Nominal). Each preset is an independent batch: its own sat name
+# prefix, its own searchable label, and its own `batch` property on assets.
+# Assets are never shared between batches.
+
+# Label applied to every asset from every batch.
+common_label = "RC sats"
+
+[ground_station]
+name = "GSFC"
+latitude_deg = 38.9977
+longitude_deg = -76.8489
+altitude_m = 53.0
+
+# Orbit shell mix (weights, normalized automatically).
+[orbits]
+leo = 0.70
+meo = 0.15
+geo = 0.10
+heo = 0.05
+
+[[presets]]
+name = "rc-10-100hz"
+label = "rc-sats-10-100hz"
+sat_prefix = "RC10"
+count = 10
+rate_hz = 100.0
+
+[[presets]]
+name = "rc-50-100hz"
+label = "rc-sats-50-100hz"
+sat_prefix = "RC50"
+count = 50
+rate_hz = 100.0
+
+[[presets]]
+name = "rc-100-50hz"
+label = "rc-sats-100-50hz"
+sat_prefix = "RC100"
+count = 100
+rate_hz = 50.0
+
+[[presets]]
+name = "rc-500-20hz"
+label = "rc-sats-500-20hz"
+sat_prefix = "RC500"
+count = 500
+rate_hz = 20.0
+
+[[presets]]
+name = "rc-1k-10hz"
+label = "rc-sats-1k-10hz"
+sat_prefix = "RC1K"
+count = 1000
+rate_hz = 10.0
+
+# Capped at 2 Hz: 5k sats x 10 channels x 2 Hz = 100k pts/s, the sustainable
+# ceiling measured to staging (see readme "Throughput").
+[[presets]]
+name = "rc-5k-2hz"
+label = "rc-sats-5k-2hz"
+sat_prefix = "RC5K"
+count = 5000
+rate_hz = 2.0
+
+[[presets]]
+name = "rc-10k-1hz"
+label = "rc-sats-10k-1hz"
+sat_prefix = "RC10K"
+count = 10000
+rate_hz = 1.0
