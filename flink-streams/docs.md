@@ -1,6 +1,6 @@
 # Flink test streams
 
-Eight channels streamed from a laptop, listed in chart row order. Every channel carries the same signal, a sine wave with a **5 s period** and amplitude 1, sampled on exact multiples of the period so the phase is identical everywhere. A perfect render of any channel matches `sine-5hz`.
+Ten channels streamed from a laptop, listed in chart row order. Every channel carries the same signal, a sine wave with a **5 s period** and amplitude 1, sampled on exact multiples of the period so the phase is identical everywhere. A perfect render of any channel matches `sine-5hz`.
 
 The channels differ only in *when* points arrive and *what timestamp* they carry. Values are never wrong, only absent or late. A dropped point shows as a notch or a wide step, and a late recovery fills it in.
 
@@ -35,6 +35,14 @@ The whole 1 → 0 quarter of each wave (6 points, peak to zero crossing) is held
 **Row 8 · `future-stamps`** · 5 Hz
 Every 4th point is stamped 3 s in the future and delivered on time. Its value is correct for the timestamp it carries.
 *Look for:* each future point pushes the cutoff 3 s ahead, so the next three on-time points count as late. Below 3 s allowed lateness only the future points survive and the wave renders at 1.25 Hz with 0.8 s steps. Above 3 s it is perfect.
+
+**Row 9 · `chaos-sine-10g`** · 5 Hz · 10 series
+Chaos delivery (as `chaos-sine`) on 10 series tagged `group=0..9`. Each series is the reference sine with a fixed phase offset within ±0.25 s, so the lines fan out slightly either side of `sine-5hz` and stay within ±1. Each series' clock is also skewed within ±1 s (same draw, so the most phase-advanced series is also the furthest ahead): its points are stamped up to 1 s ahead of or behind wall time, so some series race ahead of now and others trail.
+*Look for:* grouping by `group` gives 10 lines tracking the same wave.
+
+**Row 10 · `chaos-sine-100g`** · 5 Hz · 100 series
+Same as above on 100 series tagged `group=0..9` × `subgroup=0..9`.
+*Look for:* grouping by one tag gives 10 lines, by both gives 100.
 
 ---
 

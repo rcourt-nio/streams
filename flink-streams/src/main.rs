@@ -81,7 +81,24 @@ struct Scenario {
     /// are aligned to multiples of the period, so `t % SINE_PERIOD_S` is the
     /// sine phase.
     emit: fn(n: u64, t: f64, rng: &mut Rng) -> Vec<Ev>,
+    /// Tag keys, each taking `TAG_VALUES` values. Empty means one untagged
+    /// series. Otherwise the scenario writes one series per tag combination
+    /// (10^keys) and runs `emit` independently for each.
+    tag_keys: &'static [&'static str],
 }
+
+const TAG_VALUES: usize = 10;
+
+/// Each tagged series gets one fixed draw `u` in [-1, 1]. Its wave is shifted
+/// by `u * GROUP_PHASE_JITTER_S`, so the group fans out a little either side
+/// of the reference wave while every value stays within [-1, 1].
+const GROUP_PHASE_JITTER_S: f64 = 0.25;
+
+/// ...and its clock runs `u * GROUP_CLOCK_SKEW_S` ahead of (or behind) wall
+/// time: every point is stamped that far from the tick it is generated on,
+/// so a series with positive skew has data in the future (races ahead) and
+/// one with negative skew trails the others (lags).
+const GROUP_CLOCK_SKEW_S: f64 = 1.0;
 
 /// Small deterministic xorshift so every run produces the same delivery
 /// pattern for the chaos scenario.
@@ -101,30 +118,41 @@ impl Rng {
 const HZ5: Duration = Duration::from_millis(200);
 const HZ50: Duration = Duration::from_millis(20);
 
+/// 95% uniform 0-10 s, 5% uniform 10-15 s.
+fn chaos_delay(_: u64, _: f64, rng: &mut Rng) -> Vec<Ev> {
+    let u = rng.next_f64();
+    let delay = if rng.next_f64() < 0.95 { u * 10.0 } else { 10.0 + u * 5.0 };
+    vec![Ev::late(delay)]
+}
+
 const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "sine-5hz",
         summary: "perfect sine, every point on time",
         period: HZ5,
         emit: |_, _, _| vec![Ev::on_time()],
+        tag_keys: &[],
     },
     Scenario {
         name: "sine-50hz",
         summary: "perfect sine, every point on time",
         period: HZ50,
         emit: |_, _, _| vec![Ev::on_time()],
+        tag_keys: &[],
     },
     Scenario {
         name: "constant-delay",
         summary: "every point delivered 6 s after its timestamp",
         period: HZ5,
         emit: |_, _, _| vec![Ev::late(6.0)],
+        tag_keys: &[],
     },
     Scenario {
         name: "skew-forward",
         summary: "every point stamped 2 s in the future, delivered on time",
         period: HZ5,
         emit: |_, _, _| vec![Ev { deliver_after: 0.0, ts_offset: 2.0 }],
+        tag_keys: &[],
     },
     Scenario {
         name: "tail-swap",
@@ -145,16 +173,28 @@ const SCENARIOS: &[Scenario] = &[
                 vec![Ev::on_time()]
             }
         },
+        tag_keys: &[],
     },
     Scenario {
         name: "chaos-sine",
         summary: "delivery delay random: 95% uniform 0-10 s, 5% uniform 10-15 s",
         period: HZ50,
-        emit: |_, _, rng| {
-            let u = rng.next_f64();
-            let delay = if rng.next_f64() < 0.95 { u * 10.0 } else { 10.0 + u * 5.0 };
-            vec![Ev::late(delay)]
-        },
+        emit: chaos_delay,
+        tag_keys: &[],
+    },
+    Scenario {
+        name: "chaos-sine-10g",
+        summary: "chaos-sine delivery, 10 series tagged group=0..9, each phase-jittered +/-0.25 s",
+        period: HZ5,
+        emit: chaos_delay,
+        tag_keys: &["group"],
+    },
+    Scenario {
+        name: "chaos-sine-100g",
+        summary: "chaos-sine delivery, 100 series tagged group=0..9 x subgroup=0..9, each phase-jittered +/-0.25 s",
+        period: HZ5,
+        emit: chaos_delay,
+        tag_keys: &["group", "subgroup"],
     },
     Scenario {
         name: "future-stamps",
@@ -164,6 +204,7 @@ const SCENARIOS: &[Scenario] = &[
             3 => vec![Ev { deliver_after: 0.0, ts_offset: 3.0 }],
             _ => vec![Ev::on_time()],
         },
+        tag_keys: &[],
     },
     Scenario {
         name: "pair-swap",
@@ -173,6 +214,7 @@ const SCENARIOS: &[Scenario] = &[
             1 => vec![Ev::late(0.25)],
             _ => vec![Ev::on_time()],
         },
+        tag_keys: &[],
     },
 ];
 
@@ -183,7 +225,41 @@ const SCENARIOS: &[Scenario] = &[
 struct Sched {
     deliver_at: Instant,
     seq: u64,
+    series: usize,
     point: DoublePoint,
+}
+
+struct Series {
+    ch: ChannelDescriptor,
+    /// Seconds added to the timestamp before computing the sine value.
+    phase: f64,
+    /// Seconds added to every timestamp; the series' clock lead (+) or lag (-).
+    skew: f64,
+}
+
+/// One untagged series for a plain scenario, else one per tag combination
+/// with a deterministic phase offset each.
+fn build_series(channel: &str, keys: &[&str], rng: &mut Rng) -> Vec<Series> {
+    if keys.is_empty() {
+        return vec![Series { ch: ChannelDescriptor::new(channel), phase: 0.0, skew: 0.0 }];
+    }
+    let count = TAG_VALUES.pow(keys.len() as u32);
+    (0..count)
+        .map(|i| {
+            let mut rest = i;
+            let mut tags = Vec::with_capacity(keys.len());
+            for key in keys.iter().rev() {
+                tags.push((key.to_string(), (rest % TAG_VALUES).to_string()));
+                rest /= TAG_VALUES;
+            }
+            let u = rng.next_f64() * 2.0 - 1.0;
+            Series {
+                ch: ChannelDescriptor::with_tags(channel, tags),
+                phase: u * GROUP_PHASE_JITTER_S,
+                skew: u * GROUP_CLOCK_SKEW_S,
+            }
+        })
+        .collect()
 }
 
 // Min-heap on (deliver_at, seq) so equal-time deliveries keep enqueue order.
@@ -228,7 +304,6 @@ fn run_scenario(
     running: Arc<AtomicBool>,
     quiet: bool,
 ) {
-    let ch = ChannelDescriptor::new(&channel);
     let period = sc.period.as_secs_f64();
     // Align the first tick to a multiple of the period in wall time so every
     // timestamp sits on the grid and the sine phase is predictable.
@@ -236,10 +311,12 @@ fn run_scenario(
     let start_wall = (wall_now / period).ceil() * period;
     let start = Instant::now() + Duration::from_secs_f64(start_wall - wall_now);
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+    let series = build_series(&channel, sc.tag_keys, &mut Rng(0xD1B5_4A32_D192_ED03));
     let mut heap: BinaryHeap<Sched> = BinaryHeap::new();
     let mut n: u64 = 0;
     let mut seq: u64 = 0;
     let mut delivered: u64 = 0;
+    let mut logged: u64 = 0;
 
     while running.load(Ordering::SeqCst) {
         let now = Instant::now();
@@ -251,28 +328,32 @@ fn run_scenario(
                 break;
             }
             let tick_wall = start_wall + n as f64 * period;
-            for ev in (sc.emit)(n, tick_wall, &mut rng) {
-                let ts = tick_wall + ev.ts_offset;
-                heap.push(Sched {
-                    deliver_at: tick_at + Duration::from_secs_f64(ev.deliver_after),
-                    seq,
-                    point: DoublePoint {
-                        timestamp: Some(to_timestamp(ts)),
-                        value: (TAU * ts / SINE_PERIOD_S).sin(),
-                    },
-                });
-                seq += 1;
+            for (si, s) in series.iter().enumerate() {
+                for ev in (sc.emit)(n, tick_wall, &mut rng) {
+                    let ts = tick_wall + ev.ts_offset + s.skew;
+                    heap.push(Sched {
+                        deliver_at: tick_at + Duration::from_secs_f64(ev.deliver_after),
+                        seq,
+                        series: si,
+                        point: DoublePoint {
+                            timestamp: Some(to_timestamp(ts)),
+                            value: (TAU * (ts + s.phase) / SINE_PERIOD_S).sin(),
+                        },
+                    });
+                    seq += 1;
+                }
             }
             n += 1;
         }
 
         // Deliver everything due, in one enqueue so intra-batch order holds.
-        let mut due: Vec<DoublePoint> = Vec::new();
+        let mut due: Vec<Vec<DoublePoint>> = vec![Vec::new(); series.len()];
         while heap.peek().is_some_and(|s| s.deliver_at <= now) {
-            due.push(heap.pop().unwrap().point);
+            let s = heap.pop().unwrap();
+            due[s.series].push(s.point);
         }
-        if !due.is_empty() {
-            if !quiet {
+        for (si, due) in due.into_iter().enumerate().filter(|(_, d)| !d.is_empty()) {
+            if !quiet && series.len() == 1 {
                 let lag: Vec<String> = due
                     .iter()
                     .map(|p| {
@@ -284,7 +365,11 @@ fn run_scenario(
                 eprintln!("[{}] {} pt(s) (ts-now=value): {}", sc.name, due.len(), lag.join(" "));
             }
             delivered += due.len() as u64;
-            stream.enqueue(&ch, due);
+            stream.enqueue(&series[si].ch, due);
+        }
+        if !quiet && series.len() > 1 && delivered > logged {
+            eprintln!("[{}] {} pt(s) across {} series", sc.name, delivered - logged, series.len());
+            logged = delivered;
         }
 
         // Sleep until the next tick or delivery, capped so Ctrl-C stays snappy.

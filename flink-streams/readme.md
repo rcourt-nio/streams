@@ -13,7 +13,8 @@ SDK in order. Points that must arrive out of order are enqueued in the same requ
 
 Every scenario carries the same value: a sine wave with a 5 s period, so a
 dropped point reads as a notch in the curve and a recovery fills it in. All
-scenarios run at 5 Hz except the 50 Hz sine and chaos.
+scenarios run at 5 Hz except the 50 Hz sine and chaos. The grouped chaos
+channels shift each tagged series by a small fixed phase offset.
 
 ```bash
 cp .env.example .env            # fill in token / dataset / url
@@ -30,6 +31,8 @@ cargo run --release -- --list   # print scenarios
 | `skew-forward` | 5 Hz | Every point stamped 2 s in the future, delivered on time. |
 | `tail-swap` | 5 Hz | The whole 1 → 0 quarter of each 5 s wave (6 points, peak to zero crossing) is held and delivered together 50 ms after the first point past the crossing, so the segment arrives 0.2–1.2 s out of order. The other three quarters are on time. |
 | `chaos-sine` | 50 Hz | Delivery delay random: 95% uniform 0–10 s, 5% uniform 10–15 s. |
+| `chaos-sine-10g` | 5 Hz | Chaos delivery on 10 series tagged `group=0..9`. Each series has a fixed phase offset within ±0.25 s, so the group tracks the reference wave with a slight fan-out and stays within ±1. Each series' clock is also skewed within ±1 s: its points are stamped up to 1 s ahead of or behind the tick they are generated on, so some series race ahead of now and others lag. Grouping by `group` shows 10 lines. |
+| `chaos-sine-100g` | 5 Hz | Same, on 100 series tagged `group=0..9` × `subgroup=0..9`. Grouping by one tag shows 10 lines, by both shows 100. |
 | `future-stamps` | 5 Hz | Every 4th point stamped 3 s in the future, delivered on time. |
 | `pair-swap` | 5 Hz | Pairs (t, t+0.2). The t+0.2 point is delivered 50 ms after the t+0.4 point, so it is 0.2 s out of order every time. |
 
